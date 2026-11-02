@@ -1,8 +1,26 @@
 # solana-decode-demo
 
-Şeması olmayan bir Solana programına bağlanmaya çalışırken tıkanma noktası: **instruction'lar ne diyor, hangi hesaplar geçiyor, neden patladı?**
+On-chain diagnosis for Solana problems where the money is already stuck: a wrong address, a frozen account, a dead frontend, a stalled protocol.
 
-Bu araç mainnet tx'ini döker — üst ve CPI (inner) instruction'lar, çözülmüş hesap listesi (signer/writable işaretli), veri, ve **başarısız tx'te hatanın hangi instruction'da olduğunu** gösterir. IDL üretmez; insanın okuyabileceği, kanıta dayalı döküm verir.
+The pattern across every case here is the same — decode the transaction, check the account owner and state, and say whether it is recoverable or a dead end. Including when the answer is a dead end, which is worth having because it stops the search being rerun hopefully every month.
+
+**Three published cases, free, no email gate:**
+
+| Case | Verdict |
+|---|---|
+| [26.55 SOL on an off-curve address](cases/offcurve-26-549848471-sol/index.md) | Stuck, not lost. A 15,456-derivation sweep across 184 live programs found no PDA match. |
+| [539 USDC in an ATA after a typo](cases/usdc-539-ata-dust-rescue.md) | Recoverable. Balances verified by simulation; close order documented. |
+| [Matured RateX PT after the frontend died](cases/ratex-pt-redemption-dead-frontend/index.md) | Recoverable. Instruction rebuilt, both silent traps documented. |
+
+## Getting your own case diagnosed
+
+Comment or open an issue with the signature (or the addresses, if there is no transaction). **Diagnosis first, you pay after you receive the report** — $49 USDC, same day. If the report is a dead end, it is still a verified one and you decide whether the next step is worth $140.
+
+Payout, if you decide it was: `3HLDkipdKmJKGjbgCD8moo3GyhEY4DWdZ7JAgSpMysHp` (Solana USDC).
+
+## Tools
+
+`decode.mjs` — dumps a mainnet transaction without an IDL: top-level and CPI instructions, resolved account list with signer/writable flags, and which instruction actually failed. It does not invent an IDL; it gives an evidence-based reading.
 
 ```bash
 node decode.mjs <signature>
@@ -10,36 +28,36 @@ node decode.mjs <signature> --program <programId> --json out.json
 CLUSTER=devnet RPC_URL=https://api.devnet.solana.com node decode.mjs <sig>
 ```
 
-Örnek: `demo-whirlpool.json` (başarılı swap, 25 instruction) · `demo-fail.json` (başarısız tx — `top[4]`, SPL `InsufficientFunds`).
+Samples: `demo-whirlpool.json` (successful swap, 25 instructions) · `demo-fail.json` (failed tx — `top[4]`, SPL `InsufficientFunds`).
 
-## Çıktı
+Output: `diagnosis` (failing instruction, program, decoded SPL/Anchor code meaning, CPI caveat), `programLogs`, `kind`/`path`, accounts with `[signer]`/`[w]`, `dataLen`, `dataHex`, `candidateDiscriminator`.
 
-- `diagnosis` — hata varsa hangi instruction, hangi program, kod anlamı (SPL / Anchor tabloları), CPI zinciri uyarısı
-- `programLogs` — "Error: insufficient funds" gibi bağlam satırları, sırayla
-- `kind`, `path` — üst (`top`) veya CPI (`inner`) konumu; `failed` işareti
-- hesap listesi: `[signer]` / `[w]` rolleriyle
-- `dataLen`, `dataHex`, `candidateDiscriminator`
+`tools/pda-sweep.mjs` — checks whether an off-curve address could be a program PDA. No dependencies; does its own base58.
 
-## Neyi iddia etmez
+```bash
+node tools/pda-sweep.mjs <off-curve-address>
+```
 
-| İddia | Gerçek |
+## What this does not claim
+
+| Claim | Reality |
 |---|---|
-| `candidateDiscriminator` = instruction adı | İlk 8 bayttır, **kesin değil**. Anchor 0.31+ özel uzunluk kullanabiliyor. Program şeması doğrulanmadan isim verme. |
-| 25 instruction çözdüm = 25 tip destekliyorum | Hayır. Bayt konumları çıkar; parametre anlamı ve hesap rolü ayrı iştir. |
-| Tek tx = tam PDA haritası | Hayır. Tek başarılı tx bir programın bütün seed ilişkilerini göstermez. |
-| Tam şema garantisi | Kapsam tanımlıysa "o entegrasyon için doğrulanmış şema" — hepsi değil. |
+| `candidateDiscriminator` equals the instruction name | It is the first 8 bytes and is **not** certain. Anchor 0.31+ can vary length. No naming before the program schema is checked. |
+| "25 instructions decoded" means 25 types supported | No. It exposes byte positions; parameter meaning and account roles are separate work. |
+| One transaction equals a full PDA map | No. A single successful transaction does not reveal a program's seed relationships. |
+| A sweep miss is proof of impossibility | No. It covers one-seed shapes on live programs only — not multi-seed shapes, not project-specific seed strings. |
 
-## Bilinen rampa
+## Known ramp
 
-Legacy + v0 + v1 tx'ler ayrı ele alınıyor (v1'i reddeden node'da v0'a düşer). Arşivlenmiş eski tx için arşiv node'u gerekir (`RPC_URL`).
+Legacy, v0 and v1 transactions are handled separately (falling back to v0 on nodes that reject v1). Archived transactions need an archive node via `RPC_URL`.
 
-## Fiyat
+## Pricing
 
-| Paket | Teslimat | Fiyat |
+| Package | Delivery | Price |
 |---|---|---|
-| Quick Diagnosis | Hata analizi + kısa rapor | 25 USDC |
-| Bot Rescue | Tanımlı tek sorunun onarımı + test | 150–250 USDC |
-| Integration Rescue | Tanımlı kapsamda entegrasyon + test | 400–600 USDC |
-| Advanced RE | Ön incelemeye göre | 800 USDC+ |
+| Quick Diagnosis | Failure analysis + short report | 25 USDC |
+| Bot Rescue | Repair of one defined problem + test | 150–250 USDC |
+| Integration Rescue | Integration within a defined scope + test | 400–600 USDC |
+| Advanced RE | Quoted after look | 800 USDC+ |
 
-Başarı kriteri işe yazılır: *üzerinde anlaşılan hata giderilir ve müşterinin test ortamında aynı işlem çalışır.* Sözleşmede olmayan hatalar kapsam dışı.
+Success is written into the work: *the agreed failure is gone and the same operation runs in the customer's own test environment.* Failures outside the agreed scope are out of scope.

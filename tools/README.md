@@ -1,6 +1,6 @@
 ﻿# tools
 
-`pda-sweep.mjs` — checks whether an off-curve address could be a program PDA. **No dependencies**: it does its own base58 and ed25519 curve test.
+`pda-sweep.mjs` — checks whether an off-curve address could be a program PDA. **No dependencies**: own base58 and ed25519 curve test.
 
 ```bash
 node pda-sweep.mjs <off-curve-address> [--blocks N]
@@ -13,4 +13,4 @@ node ratex-earn-redeem.mjs <market> <wallet>          # simulate, print the payo
 node ratex-earn-redeem.mjs <market> <wallet> --json   # emit the pieces for your own tx
 ```
 
-Markets: `xSOL-2609`. Only expired markets redeem. Verified against two real holders.
+45 expired markets across 12 assets, each with its own program id. Verified on xSOL-2609 and hyUSD-2609 — both simulate green at the same **0.1147% haircut**, so it is a protocol constant, not par.

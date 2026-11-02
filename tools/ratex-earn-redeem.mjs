@@ -13,8 +13,11 @@
  *
  * Markets are listed in MARKETS: 45 expired markets across 12 assets. Each asset has its own
  * RateX program id (the vanity `Rate…` addresses), which is why programId is per-market.
- * Verified: xSOL-2609 and hyUSD-2609 both simulate green at the same 0.1147% haircut, so the
- * haircut is a protocol constant, not a per-market number.
+ * The haircut is PER MARKET, not protocol-wide - measured 0.1149% on xSOL-2609 and hyUSD-2609
+ * but 8.23% on USD*-2608 in the same session, so always read the number before signing.
+ *
+ *   node ratex-earn-redeem.mjs <wallet>                    # scan: what does this wallet hold?
+
  *
  * Exit: 0 ok, 2 nothing to redeem, 3 simulation failed.
  * No dependencies beyond Node 18.
@@ -153,11 +156,46 @@ async function rpc(method, params) {
   return null;
 }
 
+// Scan: derive the PT ATA for every market and report the ones with a balance.
+// The ATA derivation is offline, so this is one RPC call per market — cheap and quiet.
+async function scan(wallet) {
+  const w = b58d(wallet);
+  const token = b58d(TOKEN);
+  const ataProg = b58d(ATA_P);
+  const found = [];
+  const names = Object.keys(MARKETS);
+  console.log(`scanning ${names.length} expired markets for ${wallet}\n`);
+
+  for (const name of names) {
+    const ptAta = b58e(pda([w, token, b58d(MARKETS[name].ptMint)], ataProg));
+    const info = await rpc("getAccountInfo", [ptAta, { encoding: "base64" }]);
+    if (!info?.value?.data?.[0]) continue;
+    const bal = Buffer.from(info.value.data[0], "base64").readBigUInt64LE(64);
+    if (bal === 0n) continue;
+    found.push({ name, bal: Number(bal) / 1e9 });
+    console.log(`  ${name.padEnd(14)} ${(Number(bal) / 1e9).toFixed(6)} PT`);
+    await sleep(120);
+  }
+
+  if (!found.length) { console.log("nothing to redeem on this wallet"); process.exitCode = 2; return; }
+  console.log(`\n${found.length} position(s) redeemable. Run one to see the payout:`);
+  for (const f of found) console.log(`  node ratex-earn-redeem.mjs ${f.name} ${wallet}`);
+}
+
 async function main() {
-  const [marketName, wallet] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+
+  // scan mode: only a wallet given -> list every expired market it still holds, with payout
+  if (argv.length === 1 || (argv[0] === "scan" && argv[1])) {
+    const wallet = argv[0] === "scan" ? argv[1] : argv[0];
+    return scan(wallet);
+  }
+
+  const [marketName, wallet] = argv;
   const m = MARKETS[marketName];
   if (!m || !wallet) {
-    console.error("usage: node ratex-earn-redeem.mjs <" + Object.keys(MARKETS).join("|") + "> <wallet> [--json]");
+    console.error("usage: node ratex-earn-redeem.mjs <market> <wallet> [--json]");
+    console.error("       node ratex-earn-redeem.mjs <wallet>            # scan what you hold");
     process.exit(1);
   }
   const w = b58d(wallet);

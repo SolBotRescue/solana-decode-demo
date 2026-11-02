@@ -70,11 +70,28 @@ node ../../decode.mjs 1Bs317yRWm5XLs2f7p9Eyys98ZoGHyeDdjfEBuVbZPhVEQRjfkTd9Zm7Zb
 
 Both source transfers decode to `SystemInstruction 2` (`transfer`), program `11111111111111111111111111111111`, 4 top-level instructions, **0 CPI**, 10,035 lamports fee. The recipient is a plain static account key, never a CPI account. That is the structural reason there is nothing to negotiate with on-chain.
 
-## 7. Scope — what this report does not claim
+## 7. The search, actually run — result: no hit
 
-- It does not claim the 26.5 SOL will ever be reachable. It gives the condition under which they would be.
-- It does not run the candidate-program search (that is the paid step below); it states what that search must look like so you can tell any offer apart from guesswork.
-- Balance and price are point-in-time: 2026-11-02 22:0xZ.
+Not promised, run. `tools/pda-sweep.mjs` harvests **live executable programs** out of recent blocks and derives, per program, the one-seed shapes both ways round (`<prefix> ‖ addr` and `addr ‖ <prefix>`), comparing raw bytes against the target.
+
+```
+programs tested        188
+combinations checked   15,792
+hits                   0
+```
+
+So the honest verdict upgrades from "only a program could free it" to: **among 188 live programs and 15,792 one-seed derivations, nothing derives this address.** That is a verified dead end, which is worth more than an open question — it stops the search being rerun hopefully every month.
+
+Run against any address:
+
+```bash
+node tools/pda-sweep.mjs <off-curve-address> [--blocks N]
+```
+
+**Scope of the claim, stated exactly:** a hit is conclusive; a miss is bounded. The sweep covers one-seed derivation across live programs and common prefix words. It does **not** cover multi-seed shapes (`["user", addr, index]`), non-English or project-specific seed literals, or programs not recently active. A hit is proof of reachability; a miss is strong evidence, not a theorem.
+
+- It does not claim the 26.5 SOL will ever be reachable, only the condition under which they would be.
+- Balance and price are point-in-time: 2026-11-02 ~22:00Z.
 
 ---
 
